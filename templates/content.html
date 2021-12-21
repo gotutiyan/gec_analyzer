@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{url_for('stat')}}">Go to Stat page</a>
+<form action="/" method="POST" enctype="multipart/form-data" name="type">
+<fieldset>
+    <b>Type 1</b><br>
+    {% for type in type1 %}
+    {% if visible_types1_dict[type] %}
+    <input type="checkbox" name="type1" value="{{type}}" checked>{{type}}
+    {% else %}
+    <input type="checkbox" name="type1" value="{{type}}">{{type}}
+    {% endif %}
+    {% endfor %}
+    <!-- <input type="checkbox" name="type3" value="R" checked>Replace
+    <input type="checkbox" name="type3" value="M" checked>Insert
+    <input type="checkbox" name="type3" value="U" checked>Delete -->
+</fieldset>
+{% if type2 != [''] %}
+<fieldset>
+    <b>Type 2 (If there is only checkbox, it must be checked.)</b><br>
+    {% for type in type2 %}
+    {% if visible_types2_dict[type] %}
+    <input type="checkbox" name="type2" value="{{type}}" checked>{{type}}
+    {% else %}
+    <input type="checkbox" name="type2" value="{{type}}">{{type}}
+    {% endif %}
+    {% endfor %}
+</fieldset>
+{% endif %}
+<fieldset>
+    <input type="checkbox" name="type_god" onclick="all_check(true)">ALL_CHECK
+    <input type="checkbox" name="type_god" onclick="all_check(false)">ALL_UNCHECK
+</fieldset>
+    <div>
+        <input type="submit" value="Apply">
+    </div>
+</form>
+
+<ol>
+    {% for chunks in chunks_list%} 
+    <li>
+    {% for chunk in chunks %}
+    {% if chunk.is_modified %}
+        <span style="background-color: #FEE2DD; padding-bottom: 0.2em;"><u><b>{{chunk.o_str}} → {{chunk.c_str}}</b></u><sub> {{chunk.type}}</sub></span>
+    {% else %}
+        {{chunk.o_str}}
+    {% endif %}
+    {% endfor %}
+    </li>
+    {% endfor %}
+
+</ol>
+
+<script>
+    function all_check(tf){
+        var n_elements = document.type.elements.length;
+        for( i=0 ; i<n_elements ; i++ ) {
+            document.type.elements[i].checked = tf;
+        }
+    }
+</script>
+
+{% endblock %}

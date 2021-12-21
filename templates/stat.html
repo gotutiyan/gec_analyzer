@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block content %}
+<a href="../">Back to home</a>
+<h1>Statistical Information</h1>
+
+<h3>Error type</h3>
+(Note: These numbers indicate <b>just number of modifications</b>.)
+<div id='error-type'>
+<table>
+    <thead>
+        <tr>
+            <th>Type 1</th>
+            <th>Freq.</th>
+            <th>Ratio</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for type in type2freq[0].keys() %}
+        <tr>
+            <td>{{type}}</td>
+            <td>{{type2freq[0][type]}}</td>
+            <td>{{type2ratio[0][type]}}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<br>
+<table>
+    <thead>
+        <th>Type 2</th>
+        <th>Freq.</th>
+        <th>Ratio</th>
+    <tbody>
+        {% for type in type2freq[1].keys() %}
+        <tr>
+            <td>{{type}}</td>
+            <td>{{type2freq[1][type]}}</td>
+            <td>{{type2ratio[1][type]}}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% endblock %}
