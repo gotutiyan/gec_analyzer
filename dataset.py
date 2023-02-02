@@ -1,6 +1,7 @@
 import errant
 import configparser
 import argparse
+from dataclasses import dataclass, field
 
 def test():
     origs = ['This are gramamtical sentence .',
@@ -29,42 +30,119 @@ def load_file(file_path):
 def load_annotator(lang):
     return errant.load(lang)
 
+@dataclass
+class Chunk:
+    o_str: str
+    c_str: str
+    type: str
+    is_highlight: bool
+
+class SentenceDataset:
+    '''This class handles original, references and hypotheses for a sentence.'''
+    def __init__(self, id):
+        self.id = id
+        self.orig = ''
+        self.refs_chunks = [] # 2d array (# references, # Chunk instances)
+        self.hyps_chunks = [] # 2d array (# hypothesis, # Chunk instances)
+
+    def update_n(self):
+        self.n_refs = len(self.refs_chunks)
+        self.n_hyps = len(self.hyps_chunks)
+        
 class Dataset:
+    '''
+    This class handles all sentences data.
+    Each data of a sentence is handled by SentenceData instanse.
+    '''
     def __init__(self):
-        self.orig_list = []
-        self.cor_list = []
-        self.edits_list = []
-        self.chunks_list = []
-        self.type2freq = dict()
-        self.type2ratio = dict()
-        self.wer = 0 # word error ratio
-        self.annotator = errant.load('en')
-        self.n_orig_tokens = 0
-        self.type_set = []
-    
-    def from_raw_text(self, orig_list, cor_list):
-        self.orig_list = orig_list
-        self.cor_list = cor_list
-        self.edits_list = self.extract_edits(self.orig_list, self.cor_list, self.annotator)
-        self.type_set = self.make_type_set(self.edits_list)
         return
 
-    def from_m2(self, m2, ref_id):
-        orig_list, edits_list = self.read_m2(m2, ref_id=ref_id)
-        self.orig_list = orig_list
-        self.edits_list = edits_list
-        self.type_set = self.make_type_set(self.edits_list)
-        return
+    def load(
+        self,
+        original_file=None,
+        referece_files=None,
+        hypothesis_files=None
+    ):
+        annotator = errant.load('en')
+        if referece_files is not None:
+            originals, ref_edits_lists = self.generate_edits_from_files(
+                original_file,
+                referece_files,
+                annotator
+            )
+        if hypothesis_files is not None:
+            originals, hyp_edits_lists = self.generate_edits_from_files(
+                original_file,
+                hypothesis_files,
+                annotator
+            )
+
+        self.data = [SentenceDataset(id=i+1) for i in range(len(originals))]
+        self.n_sents = len(originals)
+        for i, orig in enumerate(originals):
+            self.data[i].orig = orig
         
-    @staticmethod
-    def read_m2(m2, ref_id=0):
-        m2_contetns = m2.split('\n\n')
-        orig_list = []
+        if referece_files is not None:
+            for ref_edits in ref_edits_lists: # loop for each reference
+                for i, edits in enumerate(ref_edits): # loop for each sentence in the reference
+                    self.data[i].refs_chunks.append(
+                        self.make_chunks(
+                            self.data[i].orig,
+                            edits
+                        )
+                    )
+
+        if hypothesis_files is not None:
+            for hypo_edits in hyp_edits_lists:
+                for i, edits in enumerate(hypo_edits):
+                    self.data[i].hyps_chunks.append(
+                        self.make_chunks(
+                            self.data[i].orig,
+                            edits
+                        )
+                    )
+        for seq_dataset in self.data:
+            seq_dataset.update_n()
+
+    def generate_edits_from_files(self, orig_file, cor_files, annotator):
+        edits_lists = []
+        for file in cor_files:
+            if file.split('.')[-1] == 'm2':
+                ''' If M2 format'''
+                ref_id = 0
+                while True:
+                    originals, edits_list = self.load_from_m2(file, ref_id=ref_id)
+                    if edits_list == -1:
+                        # There is no edit corresponding ref_id-th reference.
+                        break
+                    edits_lists.append(edits_list)
+                    ref_id += 1
+            else:
+                '''If raw text'''
+                originals = open(orig_file).read().rstrip().split('\n')
+                hypothesis = open(file).read().rstrip().split('\n')
+                edits_list = self.extract_edits(
+                    origs=originals,
+                    cors=hypothesis,
+                    annotator=annotator
+                )
+                edits_lists.append(edits_list)
+        return originals, edits_lists
+
+    def load_from_m2(self, m2, ref_id):
+        originals, edits_list = self.read_m2(m2, ref_id=ref_id)
+        # self.type_set = self.make_type_set(self.edits_list)
+        return originals, edits_list
+        
+    def read_m2(self, file, ref_id=0):
+        m2_contetns = open(file).read().rstrip().split('\n\n')
+        originals = []
         edits_list = []
+        are_there_edits = False
         for m2_sent in m2_contetns:
             orig, *edits_m2 = m2_sent.split('\n')
             orig = orig[2:] # remove 'S '
-            orig_list.append(orig)
+            originals.append(orig)
             edits = []
             for edit_m2 in edits_m2:
                 idx, e_type, c_str, _, _, id = edit_m2[2:].split('|||')
@@ -80,28 +158,16 @@ class Dataset:
                 edit.c_str = c_str
                 edit.type = e_type
                 edits.append(edit)
+            if edits != []:
+                are_there_edits = True
             edits_list.append(edits)
-        return orig_list, edits_list
-            
-
-    def generate_chunks_list(self, visible_type3, visible_type25):
-        chunks_list = []
-        for orig, edits in zip(self.orig_list, self.edits_list):
-            chunks = self.make_chunks(orig, edits, visible_type3, visible_type25)
-            if chunks != -1:
-                chunks_list.append(chunks)
-        return chunks_list
+        if not are_there_edits:
+            edits_list = -1
+        return originals, edits_list
     
-    def calc_stat(self):
-        self.n_orig_tokens = self.calc_orig_tokens(self.orig_list)
-        self.wer = self.calc_wer(self.edits_list, self.n_orig_tokens)
-        self.type2freq = self.calc_type2freq(self.edits_list)
-        self.type2ratio = self.calc_type2ratio(self.type2freq)
-        return self.wer, self.type2freq, self.type2ratio
-    
-    def extract_edits(self, orig_list, cor_list, annotator):
+    def extract_edits(self, origs, cors, annotator):
         edits_list = []
-        for orig, cor in zip(orig_list, cor_list):
+        for orig, cor in zip(origs, cors):
             edits = self.make_edits(orig, cor, annotator)
             edits_list.append(edits)
         return edits_list
@@ -116,41 +182,6 @@ class Dataset:
                 type_set[0].add(type1)
                 type_set[1].add(type2)
         return type_set
-                
-
-    @staticmethod
-    def calc_orig_tokens(orig_list):
-        sum = 0
-        for orig in orig_list:
-            sum += len(orig.split(' '))
-        return sum
-
-    @staticmethod
-    def calc_type2freq(edits_list):
-        type2freq = [dict(), dict()]
-        for edits in edits_list:
-            for e in edits:
-                type0 = e.type.split(':')[0] # R:VERB:SVA => R
-                type1 = ':'.join(e.type.split(':')[1:]) # R:VERB:SVA => VERB:SVA
-                type2freq[0][type0] = type2freq[0].get(type0, 0) + 1
-                type2freq[1][type1] = type2freq[1].get(type1, 0) + 1
-        return type2freq
-
-    @staticmethod    
-    def calc_type2ratio(type2freq):
-        type2ratio = [dict(), dict()]
-        sum_corrections = sum(type2freq[0].values())
-        for i in range(len(type2freq)):
-            for type, freq in type2freq[i].items():
-                type2ratio[i][type] = round(freq / sum_corrections, 4) 
-        return type2ratio
-    
-    @staticmethod
-    def calc_wer(edits_list, n_orig_token):
-        error_token = 0
-        for edits in edits_list:
-            error_token += sum([len(e.o_str.split()) for e in edits])
-        return error_token / n_orig_token
         
     @staticmethod
     def make_edits(orig, cor, annotator):
@@ -159,53 +190,39 @@ class Dataset:
         edits = annotator.annotate(orig, cor)
         return edits
 
-    @staticmethod
-    def make_chunks(orig, edits, visible_type1, visible_type2):
+    def make_chunks(self, orig, edits):
         orig_tokens = orig.split()
         chunks = []
         token_idx = 0
         edit_idx = 0
         len_orig_tokens = len(orig_tokens)
         len_edits = len(edits)
-        found_error = False
         while token_idx < len_orig_tokens:
             if edit_idx < len_edits and token_idx == edits[edit_idx].o_start:
                 edit = edits[edit_idx]
-                type1, *type2 = edit.type.split(':')
-                type2 = ':'.join(type2)
-                if type1 in visible_type1 and\
-                    type2 in visible_type2:
-                    found_error = True
-                    chunks.append({
-                        'o_str': "φ" if edit.o_str == "" else edit.o_str,
-                        'c_str': "φ" if edit.c_str == "" else edit.c_str,
-                        'type': edit.type,
-                        'is_modified': True
-                    })
-                    token_idx = edit.o_end
-                else:
-                    chunks.append({
-                        'o_str': orig_tokens[token_idx],
-                        'c_str': None,
-                        'type': None,
-                        'is_modified': False
-                    })
-                    token_idx += 1
+                chunks.append(
+                    Chunk(
+                        o_str="φ" if edit.o_str == "" else edit.o_str,
+                        c_str="φ" if edit.c_str == "" else edit.c_str,
+                        type=edit.type,
+                        is_highlight=True
+                    )
+                )
+                token_idx = edit.o_end
                 edit_idx += 1
             else:
-                chunks.append({
-                    'o_str': orig_tokens[token_idx],
-                    'c_str': None,
-                    'type': None,
-                    'is_modified': False
-                })
+                chunks.append(
+                    Chunk(
+                        o_str=orig_tokens[token_idx],
+                        c_str=None,
+                        type=None,
+                        is_highlight=False
+                    )
+                )
                 token_idx += 1
-        if found_error:
-            return chunks
-        else:
-            return -1
+        return chunks
     
-    def load_types(id='errant'):
+    def load_types(self, id='errant'):
         if id == 'errant':
             type3 = "R M U".split()
             type25 = "ADJ ADJ:FORM ADV CONJ CONTR DET MORPH NOUN "\
