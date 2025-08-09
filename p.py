@@ -62,7 +62,7 @@ def main(args):
         ss['cache_annotate'] = dict()
     errant = CachedERRANT('en')
 
-    st.header('Input sentences')
+    st.write('Input sources, hypotheses and references, then click the "Run" button at the bottom of the page.')
     srcs = st.text_area(
         'Input Sources',
         value='This are gramamtical sentence .\nThis are gramamtical sentence .'
