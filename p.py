@@ -1,5 +1,5 @@
 import streamlit as st
-import errant
+from gecommon import CachedERRANT
 from annotated_text import annotated_text
 import argparse
 
@@ -41,20 +41,27 @@ def gen_annotate_tokens(tokens, edits, etype2visible):
         other_type = ':'.join(e.type.split(':')[1:])
         if etype2visible[mru_type] and etype2visible[other_type]:
             annotated_tokens.append((
-                f'{e.o_str} -> {e.c_str}' if e.o_str != '' else f'φ -> {e.c_str}',
+                f'{e.o_str} -> {e.c_str}',
                 e.type
             ))
         else:
             annotated_tokens.append(
-                f'{e.o_str} -> {e.c_str}' if e.o_str != '' else f'φ -> {e.c_str}',
+                f'[{e.o_str} -> {e.c_str}] ',
             )
         idx = e.o_end
     if idx < len(tokens):
         no_edited_tokens = tokens[idx:]
-        annotated_tokens.append(' '.join(no_edited_tokens) + ' ')
+        annotated_tokens.append(' '.join(no_edited_tokens))
     return annotated_tokens
 
 def main(args):
+    ss = st.session_state
+    if 'cache_parse' not in ss:
+        ss['cache_parse'] = dict()
+    if 'cache_annotate' not in ss:
+        ss['cache_annotate'] = dict()
+    errant = CachedERRANT('en')
+
     st.header('Input sentences')
     srcs = st.text_area(
         'Input Sources',
@@ -75,35 +82,32 @@ def main(args):
     st.divider()
     for etype in ETYPE:
         etype2visible[etype] = st.checkbox(etype, value=True)
-    annotator = errant.load('en')
-    p_srcs = [annotator.parse(s) for s in srcs]
-    p_hyps = [annotator.parse(h) for h in hyps]
-    p_refs = [annotator.parse(r) for r in refs]
 
-    hyp_edits = [annotator.annotate(s, h) for s, h in zip(p_srcs, p_hyps)]
-    ref_edits = [annotator.annotate(s, t) for s, t in zip(p_srcs, p_refs)]
+    if st.button("Run"):
+        hyp_edits = [errant.extract_edits(s, h) for s, h in zip(srcs, hyps)]
+        ref_edits = [errant.extract_edits(s, t) for s, t in zip(srcs, refs)]
 
-    n_sents = len(srcs)
-    for i in range(n_sents):
-        st.header(f'Line {i+1}')
-        st.write(f'<strong>Source:</strong> {srcs[i]}', unsafe_allow_html=True)
-        st.markdown('#### References')
-        tokens = srcs[i].split(' ')
-        annotated_tokens = gen_annotate_tokens(
-            tokens,
-            ref_edits[i],
-            etype2visible
-        )
-        annotated_text(annotated_tokens)
-        st.markdown('#### Hypotheses')
-        tokens = srcs[i].split(' ')
-        annotated_tokens = gen_annotate_tokens(
-            tokens,
-            hyp_edits[i],
-            etype2visible
-        )
-        annotated_text(annotated_tokens)
-        st.divider()
+        n_sents = len(srcs)
+        for i in range(n_sents):
+            st.header(f'Line {i+1}')
+            st.write(f'<strong>Source:</strong> {srcs[i]}', unsafe_allow_html=True)
+            st.markdown('#### References')
+            tokens = srcs[i].split(' ')
+            annotated_tokens = gen_annotate_tokens(
+                tokens,
+                ref_edits[i],
+                etype2visible
+            )
+            annotated_text(annotated_tokens)
+            st.markdown('#### Hypotheses')
+            tokens = srcs[i].split(' ')
+            annotated_tokens = gen_annotate_tokens(
+                tokens,
+                hyp_edits[i],
+                etype2visible
+            )
+            annotated_text(annotated_tokens)
+            st.divider()
 
 
 def get_parser():
