@@ -8,3 +8,5 @@ GEC Analyzer is a visualizer for Grammtical Error Correction efficiently.
 # Demo
 This is available on Streamlit Cloud:  
 [https://gec-analyzer.streamlit.app/](https://gec-analyzer.streamlit.app/)
+
+![demo](./images/demo.png)
